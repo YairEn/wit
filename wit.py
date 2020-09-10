@@ -1,4 +1,4 @@
-# Upload 174
+
 
 from datetime import datetime, timezone
 import filecmp
@@ -457,6 +457,11 @@ def trim_nodes(node):
     return node[:6]
 
 
+def check_if_connection_already_exist(parent, child, commit_graph):
+    if f'\t{child} -> {parent}' in commit_graph.body:
+        return True
+
+
 def create_nodes_and_connections(commit_id, head, commit_graph, wit_parent_path, master):
     while commit_id != '':
         commits_id_from_parent = get_next_commit_id(commit_id, wit_parent_path)
@@ -464,9 +469,11 @@ def create_nodes_and_connections(commit_id, head, commit_graph, wit_parent_path,
         commit_graph.node(commit_id)
 
         if commit_id == trim_nodes(master):
-            commit_graph.edge(MASTER, commit_id)
+            if not check_if_connection_already_exist(commit_id, MASTER, commit_graph):
+                commit_graph.edge(MASTER, commit_id)
         if commit_id == trim_nodes(head):
-            commit_graph.edge(HEAD, commit_id)
+            if not check_if_connection_already_exist(commit_id, HEAD, commit_graph):
+                commit_graph.edge(HEAD, commit_id)
 
         if len(commits_id_from_parent) > 1:
             for commit in commits_id_from_parent:
@@ -476,9 +483,11 @@ def create_nodes_and_connections(commit_id, head, commit_graph, wit_parent_path,
             one_commit = trim_nodes(commits_id_from_parent[0])
             if one_commit != '':
                 commit_graph.node(one_commit)
-                commit_graph.edge(commit_id, one_commit)
+                if not check_if_connection_already_exist(one_commit, commit_id, commit_graph):
+                    commit_graph.edge(commit_id, one_commit)
             commit_id = commits_id_from_parent[0]
     return commit_graph
+
 
 
 def get_next_commit_id(commit_id, wit_parent_path):
@@ -502,14 +511,20 @@ def init_graph():
     return commit_graph
 
 
-def graph():
+def graph(all_commits=None):
     wit_parent_path = get_wit_parent_path()
     if wit_parent_path:
         reference_file_path = wit_parent_path + REFERENCES_FILE
         head = get_data_from_references_file_by_index(reference_file_path, 0)
         master = get_data_from_references_file_by_index(reference_file_path, 1)
         commit_graph = init_graph()
-        commit_graph = create_nodes_and_connections(head, head, commit_graph, wit_parent_path, master)
+        images_path = wit_parent_path + IMAGES_PATH
+        if all_commits == ALL:
+            for file in get_all_commit_files(images_path):
+                commit_id = file.strip(TXT)
+                commit_graph = create_nodes_and_connections(commit_id, head, commit_graph, wit_parent_path, master)
+        else:
+            commit_graph = create_nodes_and_connections(head, head, commit_graph, wit_parent_path, master)
         commit_graph.view()
     else:
         wit_logger.critical('There is no WIT folder at this path')
@@ -534,7 +549,7 @@ def branch(branch_name):
 
 if __name__ == '__main__':
     wit_logger = init_logger()
-    init()
+    graph('--all')
     if len(sys.argv) == 2 and sys.argv[1] == INIT:
         init()
     elif sys.argv[1] == ADD:
@@ -559,7 +574,7 @@ if __name__ == '__main__':
             wit_logger.error('Checkout must get commit_id or master')
     elif sys.argv[1] == GRAPH:
         if len(sys.argv) > 2:
-            graph()
+            graph(sys.argv[2])
         else:
             graph()
     elif sys.argv[1] == BRANCH:
